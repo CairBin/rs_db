@@ -40,7 +40,11 @@ impl FileManager{
     }
 
     pub fn to_mutex(self) -> std::sync::Mutex<Self>{
-            std::sync::Mutex::new(self)
+        std::sync::Mutex::new(self)
+    }
+
+    pub fn to_rw_lock(self) -> std::sync::RwLock<Self>{
+        std::sync::RwLock::new(self)
     }
 
     fn set_file(&mut self, filename:&str) ->Result<(), Box<dyn std::error::Error>> {
@@ -95,17 +99,32 @@ impl FileManager{
         // if target file is not in the map
         if !flag{
             // create std::fs::File to map
-            mg.set_file(block.get_filename());
+            mg.set_file(block.get_filename())?;
         }
         let file = mg.get_file_mut(block.get_filename()).unwrap();
 
         let mut p = page.lock().unwrap();
-        let buf = p.contents();
+        let buf = p.contents_mut();
 
         // read bytes from file starting at given offset to buffer
         Ok(file.read_at(buf, block_size * block.get_block_number())?)
     }
 
+    /// read bytes from file starting at given offset to buffer
+    pub fn read_without_mutex(&mut self, block: &BlockId, page: &mut Page) -> Result<usize, Box< dyn std::error::Error> >{
+        let filename = block.get_filename();
+        if !self.exists(filename){
+            self.set_file(filename)?;
+        }
+        let block_size = self.block_size;
+        let file = self.get_file_mut(filename).unwrap();
+        Ok(
+            file.read_at(
+                page.contents_mut(),
+                block_size * block.get_block_number()
+            )?
+        )
+    }
 
     pub fn write(manager:&std::sync::Mutex<Self>, block:&BlockId, page:&std::sync::Mutex<Page>) -> Result<usize, Box<dyn std::error::Error>>{
         let mut mg = manager.lock().unwrap();
@@ -116,23 +135,40 @@ impl FileManager{
          // if target file is not in the map
          if !flag{
             // create std::fs::File to map
-            mg.set_file(block.get_filename());
+            mg.set_file(block.get_filename())?;
         }
         let file = mg.get_file_mut(block.get_filename()).unwrap();
 
 
-        let mut p = page.lock().unwrap();
+        let p = page.lock().unwrap();
         // write bytes from buffer to file starting from a given offset
         Ok(file.write_at(p.contents(), block.get_block_number() * block_size)?)
     }
 
-    pub fn block_num(&self, filename:&str)->Result<u64, Box<dyn std::error::Error>>{
+    pub fn write_without_mutex(&mut self, block: &BlockId, page: &Page)->Result<usize, Box<dyn std::error::Error>>{
+        let filename = block.get_filename();
+        if !self.exists(filename){
+            self.set_file(filename)?;
+        }
+
+        let block_size = self.block_size;
+        let file = self.get_file_mut(filename).unwrap();
+        Ok(
+            file.write_at(
+                page.contents(),
+                block.get_block_number() * block_size
+            )?
+        )
+    }
+
+    pub fn block_num(&mut self, filename:&str)->Result<u64, Box<dyn std::error::Error>>{
         let file = match self.get_file(filename) {
             Some(f) =>{
                 f
             },
             _ =>{
-                return Err("Cant find target file from map. Please use set_file firstly!".into());
+                self.set_file(filename)?;
+                self.get_file(filename).unwrap()
             }
         };
 

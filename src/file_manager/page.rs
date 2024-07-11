@@ -61,8 +61,12 @@ impl Page{
     }
 
     /// get buffer's mut reference
-    pub fn contents(&mut self)->&mut [u8]{
+    pub fn contents_mut(&mut self)->&mut [u8]{
         &mut self.buffer
+    }
+
+    pub fn contents(&self) -> &[u8]{
+        &self.buffer
     }
 
 
